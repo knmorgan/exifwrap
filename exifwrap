@@ -1,0 +1,75 @@
+#!/bin/bash
+
+print_usage() {
+    cat << EOF
+usage: exifwrap [-t <timestamp>] [-f] <file>
+EOF
+}
+
+validate_timestamp() {
+    if ! echo "$TIMESTAMP" | grep -Eq "\d{4}:\d\d:\d\d \d\d:\d\d:\d\d([-+]\d\d:\d\d)?"; then
+        cat << EOF
+error: invalid timestamp format; valid examples:
+    2018:02:13 15:18:42
+    2015:09:19 17:30:00-04:00
+EOF
+        exit 1
+    fi
+}
+
+ask_to_proceed() {
+    read -p "All timestamps will be updated to $TIMESTAMP. Do you want to proceed [y/n]? " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[yY]$ ]]; then
+        echo "aborting"
+        exit 1
+    fi
+}
+
+FORCE=false
+
+while (( "$#" )); do
+    case "$1" in
+        -f|--force)
+            FORCE=true
+            shift
+            ;;
+        -t|--timestamp)
+            TIMESTAMP="$2"
+            validate_timestamp
+            shift 2
+            ;;
+        -h|--help)
+            print_usage
+            exit
+            ;;
+        *)
+            FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$FILE" ]; then
+    print_usage
+    exit 1
+fi
+
+if [ -z "$TIMESTAMP" ]; then
+    TIMESTAMP=`exiftool -s -s -s -filemodifydate $FILE`
+else
+    exiftool -filemodifydate="$TIMESTAMP" $FILE > /dev/null
+fi
+
+if ! $FORCE; then
+    ask_to_proceed
+fi
+
+exiftool \
+    "-MediaCreateDate<filemodifydate" \
+    "-MediaModifyDate<filemodifydate" \
+    "-TrackCreateDate<filemodifydate" \
+    "-TrackModifyDate<filemodifydate" \
+    "-CreateDate<filemodifydate" \
+    "-ModifyDate<filemodifydate" \
+    -tagsfromfile @ -mditemfscreationdate -P "$FILE"
